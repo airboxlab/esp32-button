@@ -53,7 +53,7 @@ static bool button_up(debounce_t *d) {
     return button_fell(d);
 }
 
-#define LONG_PRESS_DURATION (2000)
+#define LONG_PRESS_DURATION (5000)
 #define LONG_PRESS_REPEAT (50)
 
 static uint32_t millis() {
@@ -73,19 +73,16 @@ static void button_task(void *pvParameter)
     for (;;) {
         for (int idx=0; idx<pin_count; idx++) {
             update_button(&debounce[idx]);
-            if (debounce[idx].down_time && millis() >= debounce[idx].next_long_time) {
-                ESP_LOGI(TAG, "%d LONG", debounce[idx].pin);
+            if (button_up(&debounce[idx])) {
+                debounce[idx].down_time = 0;
+                send_event(debounce[idx], BUTTON_UP);
+            } else if (debounce[idx].down_time && millis() >= debounce[idx].next_long_time) {
                 debounce[idx].next_long_time = debounce[idx].next_long_time + LONG_PRESS_REPEAT;
                 send_event(debounce[idx], BUTTON_HELD);
             } else if (button_down(&debounce[idx]) && debounce[idx].down_time == 0) {
                 debounce[idx].down_time = millis();
-                ESP_LOGI(TAG, "%d DOWN", debounce[idx].pin);
                 debounce[idx].next_long_time = debounce[idx].down_time + LONG_PRESS_DURATION;
                 send_event(debounce[idx], BUTTON_DOWN);
-            } else if (button_up(&debounce[idx])) {
-                debounce[idx].down_time = 0;
-                ESP_LOGI(TAG, "%d UP", debounce[idx].pin);
-                send_event(debounce[idx], BUTTON_UP);
             }
         }
         vTaskDelay(10/portTICK_PERIOD_MS);
@@ -110,6 +107,7 @@ QueueHandle_t pulled_button_init(unsigned long long pin_select, gpio_pull_mode_t
     io_conf.pull_up_en = (pull_mode == GPIO_PULLUP_ONLY || pull_mode == GPIO_PULLUP_PULLDOWN);
     io_conf.pull_down_en = (pull_mode == GPIO_PULLDOWN_ONLY || pull_mode == GPIO_PULLUP_PULLDOWN);;
     io_conf.pin_bit_mask = pin_select;
+    io_conf.intr_type = GPIO_INTR_DISABLE;
     gpio_config(&io_conf);
 
     // Scan the pin map to determine number of pins
